@@ -75,7 +75,7 @@ class SETUP():
     Get parameter
     =========================================='''
 
-    def get(self,var,s=0):
+    def get(self,var,s=0, **kwargs):
         ''' Returns a list of arrays containing var
         get(var,**keys)
 
@@ -86,7 +86,7 @@ class SETUP():
         s[=0]:      Species index to be used, defaults to 0
         '''
         from numpy import asarray
-        return asarray([case.get(var,s=s) for case in self.cases])
+        return asarray([case.get(var,s=s,**kwargs) for case in self.cases])
 
 
     def getZ(self,var):

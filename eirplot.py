@@ -7,6 +7,93 @@ from matplotlib.pyplot import ion
 ion()
 
 
+class TALLY:
+    def __init__(self, fname, path='.', altname='', ISTRA=0, nx=0, ny=0, ueproj=None):
+        ''' Reads the data from tally, returns list with values '''
+        from numpy import zeros, transpose
+
+        self.fname = fname # Tally name
+        self.altname = altname # Variable shorthand name
+
+        # Read the file line-by line
+        intal = fname.split("_")[0]=='intal' # Flag to mark if we are in the correct strata
+        strata = True*intal # Flag to mark if we are in the correct strata
+        celldata = False # Flag to mark whether cell data is being read
+        speciesline = False # Flag whether next line is species handles
+        unitline = False # Flag whether next line is the variable unit
+        totline = False
+        meanline = False
+        valbuff = []
+        with open('{}/{}'.format(path,fname),'r') as f:
+            # Loop through the file looking for the requested strata:
+            for l in f:
+                # Strata detected
+                if l[:5] == 'ISTRA':
+                    if int(l[8:]) == ISTRA:
+                        strata = True
+                    else: 
+                        strata = False                   
+                elif l[0] == '=':
+                    if strata and (not celldata):
+                        celldata = True
+                    else:
+                        celldata = False
+                elif strata and celldata:
+                    valbuff.append([int(l.split()[0]),float(l.split()[1])])
+                elif strata and (not celldata):
+                    if l[:6] == 'NCELLS':
+                        self.N = int(l.split()[-1]) # Number of cells
+                    elif l[:8] == 'NSPECIES':
+                        self.Ns = int(l.split()[-1]) # Number of species
+                        if self.Ns == 0:
+                            return
+                    elif l[:7] == 'SPECIES':
+                        speciesline = True
+                    elif speciesline:
+                        self.species = l.split() # List with species handles
+                        speciesline = False
+                    elif l[:5] == 'UNITS':
+                        unitline = True
+                    elif unitline:
+                        self.unit = l.split()[0] # String with EIRENE unit
+                        unitline = False
+                    elif l[:5] == 'TOTAL':
+                        totline = True
+                    elif totline:
+                        self.volsum = float(l.split()[0]) # Sum of product of cell value and volume
+                        totline = False
+                    elif l[:4] == 'MEAN':
+                        meanline = True
+                    elif meanline:
+                        self.mean = float(l.split()[0]) # Mean 
+                        meanline = False
+
+        # TODO: Figure out if index 1 is the GC or first real cell (i.e. Fotran or Python indexing.. Assume Fortran)
+        # Create numpy array with data
+        self.data = {}
+        # Create EIRENE data array
+        eirbuff = zeros((self.N, self.Ns))
+        for i in valbuff:
+            eirbuff[i[0]] = i[1:]
+
+        self.data['eir'] = eirbuff.transpose()
+
+
+        # Create UEDGE data array
+        uebuff = zeros((nx+2, ny+2, self.Ns, 2))
+        
+        for s in range(self.Ns): # Loop through each species
+            for i in range(1,self.N-1):
+                uebuff[ueproj[i,0], ueproj[i,1], :, ueproj[i,2]] = self.data['eir'][:,i]
+
+        self.data['ue'] = transpose(uebuff, (2,0,1,3))
+
+
+        
+        
+            
+                    
+        
 class NODES:
     def __init__(self,path='.',npco=True):
         # Read the node data
@@ -122,23 +209,23 @@ class TRIANGLES():
 
 class NEIGHBORS():
     def __init__(self,path='.'):
+        from numpy import array, amax
+
         self.neigh=[]
         self.ind=[]
-        try:
-            with open('{}/fort.35'.format(path),'r') as f:
-                N=int(f.readline().strip())
-                for i in range(N):
-                    line=[int(x) for x in f.readline().split()]
-                    temp1=[]
-                    for j in range(3):
-                        temp2=[]
-                        for k in range(3):
-                            temp2.append(line[1+j*3+k])
-                        temp1.append(temp2)
-                    self.neigh.append(temp1) 
-                    self.ind.append(line[-2:])
-        finally:
-            f.close
+        with open('{}/fort.35'.format(path),'r') as f:
+            N=int(f.readline().strip())
+            for i in range(N):
+                line=[int(x) for x in f.readline().split()]
+                temp1=[]
+                for j in range(3):
+                    temp2=[]
+                    for k in range(3):
+                        temp2.append(line[1+j*3+k])
+                    temp1.append(temp2)
+                self.neigh.append(temp1) 
+                self.ind.append(line[-2:])
+        self.ind = array(self.ind) 
 
     def get(self,N):
         ''' Get the neighbors of the Nth fortran index node '''
@@ -156,6 +243,11 @@ class NEIGHBORS():
                 if self.neigh[t][v][-1]==N:
                     ret.append([t+1,v])
         return ret
+
+    
+    def get_dimensions(self):
+        from numpy import amax
+        return amax(self.ind, axis=0)    
         
 
 
@@ -197,136 +289,8 @@ class FORT30:
         for i in range(len(self.cells)):
             self.plot_cell(i,ax)
 
-
-def tallies():
-    return {
-                'te':'intal_1',
-                'ti':'intal_2',
-                'ne':'intal_3',
-                'ni':'intal_4',
-                'uup':'intal_5',
-                'vy':'intal_6',
-                'vzd':'intal_7',
-                'bx':'intal_8',
-                'by':'intal_9',
-                'bz':'intal_10',
-                'b':'intal_11',
-                'I12':'intal_12',
-                'eikind':'intal_13',
-                'vol':'intal_14',
-                'I15':'intal_15',
-                'I16':'intal_16',
-                'I17':'intal_17',
-                'I18':'intal_18',
-                'I19':'intal_19',
-                'I20':'intal_20',
-                'I21':'intal_21',
-                'I22':'intal_22', 
-                'na':'outtal_1',
-                'nm':'outtal_2',
-                'nmi':'outtal_3',
-                'ng':'outtal_4',
-                'ea':'outtal_5',
-                'em':'outtal_6',
-                'emi':'outtal_7',
-                'eg':'outtal_8',
-                'apsore':'outtal_9',
-                'apsora':'outtal_10',
-                'apsorm':'outtal_11',
-                'apsormi':'outtal_12',
-                'apsorg':'outtal_13',
-                'apsori':'outtal_14',
-                'mpsore':'outtal_15',
-                'mpsora':'outtal_16',
-                'mpsorm':'outtal_17',
-                'mpsormi':'outtal_18',
-                'mpsorg':'outtal_19',
-                'mpsori':'outtal_20',
-                'ipsore':'outtal_21',
-                'ipsora':'outtal_22',
-                'ipsorm':'outtal_23',
-                'ipsormi':'outtal_24',
-                'ipsormg':'outtal_25',
-                'ipsori':'outtal_26',
-                'gpsore':'outtal_27',
-                'gpsora':'outtal_28',
-                'gpsorm':'outtal_29',
-                'gpsormi':'outtal_30',
-                'gpsormg':'outtal_31',
-                'gpsori':'outtal_32',
-                'aesore':'outtal_33',
-                'aesora':'outtal_34',
-                'aesorm':'outtal_35',
-                'aesormi':'outtal_36',
-                'aesorg':'outtal_37',
-                'aesori':'outtal_38',
-                'mesore':'outtal_39',
-                'mesora':'outtal_40',
-                'mesorm':'outtal_41',
-                'mesormi':'outtal_42',
-                'mesorg':'outtal_43',
-                'mesori':'outtal_44',
-                'iesore':'outtal_45',
-                'iesora':'outtal_46',
-                'iesorm':'outtal_47',
-                'iesormi':'outtal_48',
-                'iesormg':'outtal_49',
-                'iesori':'outtal_50',
-                'gesore':'outtal_51',
-                'gesora':'outtal_52',
-                'gesorm':'outtal_53',
-                'gesormi':'outtal_54',
-                'gesormg':'outtal_55',
-                'gesori':'outtal_56',
-                'V57':'outtal_57',
-                'V58':'outtal_58',
-                'V59':'outtal_59',
-                'V60':'outtal_60',
-                'V61':'outtal_61',
-                'V62':'outtal_62',
-                'V63':'outtal_63',
-                'V64':'outtal_64',
-                'V65':'outtal_65',
-                'V66':'outtal_66',
-                'V67':'outtal_67',
-                'V68':'outtal_68',
-                'V69':'outtal_69',
-                'V70':'outtal_70',
-                'V71':'outtal_71',
-                'V72':'outtal_72',
-                'V73':'outtal_73',
-                'V74':'outtal_74',
-                'V75':'outtal_75',
-                'V76':'outtal_76',
-                'V77':'outtal_77',
-                'V78':'outtal_78',
-                'V79':'outtal_79',
-                'V80':'outtal_80',
-                'V81':'outtal_81',
-                'V82':'outtal_82',
-                'V83':'outtal_83',
-                'V84':'outtal_84',
-                'V85':'outtal_85',
-                'V86':'outtal_86',
-                'V87':'outtal_87',
-                'V88':'outtal_88',
-                'V89':'outtal_89',
-                'V90':'outtal_90',
-                'V91':'outtal_91',
-                'V92':'outtal_92',
-                'V93':'outtal_93',
-                'V94':'outtal_94',
-                'V95':'outtal_95',
-                'V96':'outtal_96',
-                'V97':'outtal_97',
-                'V98':'outtal_98',
-                'V99':'outtal_99',
-                'V100':'outtal_100',
-            }
-
-
 class EIRRUN:
-    def __init__(self,path='.',nx=None,ny=None):
+    def __init__(self,path='.',ISTRA=0):
         from numpy import linspace,reshape,transpose,pad,zeros,sum
         from os.path import abspath
         path=abspath(path)
@@ -335,38 +299,38 @@ class EIRRUN:
         self.nodes=NODES(path=path,npco=False)
         self.triangles=TRIANGLES(path=path) 
         self.neigh=NEIGHBORS(path=path) 
-        self.path=path
-        self.tallies=tallies()
-        self.vars={}
-        for var, tally in self.tallies.items():
-            try:
-                self.vars[var]=self.read_tally(tally)
-            except:
-                pass
+        nx, ny = self.neigh.get_dimensions()
+
 
         self.nx=nx
         self.ny=ny
         self.N=self.triangles.getN()
-        # Try to create array for comparison to UEDGE values
-        self.UEarr=pad(transpose(reshape(linspace(1,self.N,self.N).astype(int),(ny,nx,2)),axes=(1,0,2)),((1,0),(1,0),(0,0)),constant_values=0)
-        self.EIRarr=zeros((self.N+1,2))
+        # Create a set of mapping arrays between UEDGE and EIRENE
+        self.UEarr = pad( transpose( reshape( 
+                    linspace(1,self.N,self.N).astype(int), (ny,nx,2)),
+                    axes=(1,0,2)), ((1,1),(1,1),(0,0)), constant_values=0)
+        # The UEDGE array is a 0:nx+1 by 0:ny+1 by 2 array.
+        # The 3rd dimension contains the index of each of the two triangles
+        # that the UEDGE grid is split into. 
+        self.EIRarr=zeros((self.N+1,3))
         for i in range(nx+1):
             for j in range(ny+1):
                 for k in range(2):
-                    self.EIRarr[self.UEarr[i,j,k]]=[i,j]
-                    self.EIRarr=self.EIRarr.astype(int)
-        try:
-            self.UEarr=pad(transpose(reshape(linspace(1,self.N,self.N).astype(int),(ny,nx,2)),axes=(1,0,2)),((1,0),(1,0),(0,0)),constant_values=0)
-            self.EIRarr=zeros((self.N+1,2))
-            for i in range(nx+1):
-                for j in range(ny+1):
-                    for k in range(2):
-                        self.EIRarr[self.UEarr[i,j,k]]=[i,j]
-                        self.EIRarr=self.EIRarr.astype(int)
-        except Exception as e:
-            print('UEDGE cell array could not be created')
-            print(e)
-            self.UEarr=None
+                    self.EIRarr[self.UEarr[i,j,k]]=[i,j,k]
+        self.EIRarr=self.EIRarr.astype(int)
+        # The EIRENE array is an ordered array according to the EIRENE 
+        # triangle indices, where each index contains the coordinates
+        # to the cell in the UEDGE grid (index 0 is a placeholder to
+        # recreate the fortran indexing. The third index indicates whether
+        # it is the first or second traingle in the sell
+
+
+        self.data={}
+        for var, tally in self.tallies().items():
+            try:
+                self.data[tally] = TALLY(tally, path=path, altname=var, ISTRA=ISTRA, nx=nx, ny=ny, ueproj=self.EIRarr)
+            except:
+                self.data[tally] = None
 
     def get_bounds(self,mult=1e-2):
         ''' Returns the min and max bounds in each direction
@@ -460,36 +424,30 @@ class EIRRUN:
         return ret[1:]*1e-2
 
 
-    def get(self,var,typ='mean',s=0): # Get values of var on UE grid
+    def get(self, var, code='eir', processing='raw', s=None):
         from numpy import zeros,sum,mean
-        ret=zeros((self.nx+1,self.ny+1,2)) 
-        val=self.vars[var]
         
-        if typ=='weighted':
-            vol=self.vars['vol']
+        try:
+            ret = self.data[self.tallies()[var]] # Try to access the data by the aternative handle
+        except:
+            ret = self.data[var] # If not, assume the variable to the tally name
 
-        for i in range(self.nx+1):
-            for j in range(self.ny+1):
-                tvol=0
-                for k in range(2):
-                    ret[i,j,k]=val[self.UEarr[i,j,k]]
-                    try: 
-                        ret[i,j,k]=val[self.UEarr[i,j,k]]*vol[self.UEarr[i,j,k]]
-                        tvol+=vol[self.UEarr[i,j,k]] 
-                    except:     
-                        pass
-                if typ=='weighted':
-                    ret[i,j,0]=sum(ret[i,j])/tvol
-        
-        if typ=='weighted':
-            return ret[:,:,0]
-        elif typ=='mean':
-            return mean(ret,axis=2)
-        elif typ=='sum':
-            return sum(ret,axis=2)
-        else:
-            print('Type {} not recognized! Aborting...'.format(typ))
+        if (ret.Ns != 1) and (s is None):
+            print('Multi-species tally requested: please specify s!')
             return
+        elif (ret.Ns !=1):
+            ret = ret.data[code][s]
+        else:
+            ret = ret.data[code][0]
+            
+        # TODO: get meansum - ret.mean
+        # TODO: get volsum - ret.colsum
+        # TODO: get mean - ret cell mean
+        # TODO: get weighted - ret cellval*cellvol/totvol
+
+
+        return ret
+
 
     def getN(self,var,s=0):
         from numpy import array
@@ -631,37 +589,6 @@ class EIRRUN:
             ax.set_aspect('equal')
         return fig
 
-    def read_tally(self,var,ISTRA=0):
-        ''' Reads the data from tally, returns list with values '''
-        from numpy import zeros
-
-        try:
-            tally=self.tallies[var]
-        except:
-            tally=var
-        lines=[]
-        with open('{}/{}'.format(self.path,tally),'r') as f:
-            for l in f:
-                lines.append(l.strip())
-        iISTRA=[i for i, elem in enumerate(lines) if 'ISTRA' in elem]
-        b=[i for i, elem in enumerate(lines) if '====' in elem]
-        
-        blocks=[]
-        for i in range(0,len(b),2):
-            try: blocks.append([b[i]+1,b[i+1]])
-            except: blocks.append([b[i]+1,len(lines)])
-
-        ret=zeros((self.triangles.getN()+1,))
-        for i in range(blocks[ISTRA][0],blocks[ISTRA][1]):
-            try:
-                l=[x.strip() for x in lines[i].split(' ')]
-                ret[int(l[0])]=float(l[-1])
-            except:
-                pass
-
-        if var[0]=='n': ret=ret*1e6
-    
-        return ret
 
 
     def UEcomp( self,var,zUE,zrange=False,zaxis='lin',cmap='bwr',grid=False,ISTRA=0,
@@ -835,5 +762,132 @@ class EIRRUN:
 
         return Z
                     
+        
+    def tallies(self):
+        return {
+                    'te':'intal_1',
+                    'ti':'intal_2',
+                    'ne':'intal_3',
+                    'ni':'intal_4',
+                    'uup':'intal_5',
+                    'vy':'intal_6',
+                    'vzd':'intal_7',
+                    'bx':'intal_8',
+                    'by':'intal_9',
+                    'bz':'intal_10',
+                    'b':'intal_11',
+                    'I12':'intal_12',
+                    'eikind':'intal_13',
+                    'vol':'intal_14',
+                    'I15':'intal_15',
+                    'I16':'intal_16',
+                    'I17':'intal_17',
+                    'I18':'intal_18',
+                    'I19':'intal_19',
+                    'I20':'intal_20',
+                    'I21':'intal_21',
+                    'I22':'intal_22', 
+                    'na':'outtal_1',
+                    'nm':'outtal_2',
+                    'nmi':'outtal_3',
+                    'ng':'outtal_4',
+                    'ea':'outtal_5',
+                    'em':'outtal_6',
+                    'emi':'outtal_7',
+                    'eg':'outtal_8',
+                    'apsore':'outtal_9',
+                    'apsora':'outtal_10',
+                    'apsorm':'outtal_11',
+                    'apsormi':'outtal_12',
+                    'apsorg':'outtal_13',
+                    'apsori':'outtal_14',
+                    'mpsore':'outtal_15',
+                    'mpsora':'outtal_16',
+                    'mpsorm':'outtal_17',
+                    'mpsormi':'outtal_18',
+                    'mpsorg':'outtal_19',
+                    'mpsori':'outtal_20',
+                    'ipsore':'outtal_21',
+                    'ipsora':'outtal_22',
+                    'ipsorm':'outtal_23',
+                    'ipsormi':'outtal_24',
+                    'ipsormg':'outtal_25',
+                    'ipsori':'outtal_26',
+                    'gpsore':'outtal_27',
+                    'gpsora':'outtal_28',
+                    'gpsorm':'outtal_29',
+                    'gpsormi':'outtal_30',
+                    'gpsormg':'outtal_31',
+                    'gpsori':'outtal_32',
+                    'aesore':'outtal_33',
+                    'aesora':'outtal_34',
+                    'aesorm':'outtal_35',
+                    'aesormi':'outtal_36',
+                    'aesorg':'outtal_37',
+                    'aesori':'outtal_38',
+                    'mesore':'outtal_39',
+                    'mesora':'outtal_40',
+                    'mesorm':'outtal_41',
+                    'mesormi':'outtal_42',
+                    'mesorg':'outtal_43',
+                    'mesori':'outtal_44',
+                    'iesore':'outtal_45',
+                    'iesora':'outtal_46',
+                    'iesorm':'outtal_47',
+                    'iesormi':'outtal_48',
+                    'iesormg':'outtal_49',
+                    'iesori':'outtal_50',
+                    'gesore':'outtal_51',
+                    'gesora':'outtal_52',
+                    'gesorm':'outtal_53',
+                    'gesormi':'outtal_54',
+                    'gesormg':'outtal_55',
+                    'gesori':'outtal_56',
+                    'O57':'outtal_57',
+                    'O58':'outtal_58',
+                    'O59':'outtal_59',
+                    'O60':'outtal_60',
+                    'O61':'outtal_61',
+                    'O62':'outtal_62',
+                    'O63':'outtal_63',
+                    'O64':'outtal_64',
+                    'O65':'outtal_65',
+                    'O66':'outtal_66',
+                    'O67':'outtal_67',
+                    'O68':'outtal_68',
+                    'O69':'outtal_69',
+                    'O70':'outtal_70',
+                    'O71':'outtal_71',
+                    'O72':'outtal_72',
+                    'O73':'outtal_73',
+                    'O74':'outtal_74',
+                    'O75':'outtal_75',
+                    'O76':'outtal_76',
+                    'O77':'outtal_77',
+                    'O78':'outtal_78',
+                    'O79':'outtal_79',
+                    'O80':'outtal_80',
+                    'O81':'outtal_81',
+                    'O82':'outtal_82',
+                    'O83':'outtal_83',
+                    'O84':'outtal_84',
+                    'O85':'outtal_85',
+                    'O86':'outtal_86',
+                    'O87':'outtal_87',
+                    'O88':'outtal_88',
+                    'O89':'outtal_89',
+                    'O90':'outtal_90',
+                    'O91':'outtal_91',
+                    'O92':'outtal_92',
+                    'O93':'outtal_93',
+                    'O94':'outtal_94',
+                    'O95':'outtal_95',
+                    'O96':'outtal_96',
+                    'O97':'outtal_97',
+                    'O98':'outtal_98',
+                    'O99':'outtal_99',
+                    'O100':'outtal_100',
+                }
+
 
 
