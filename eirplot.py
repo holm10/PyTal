@@ -10,7 +10,7 @@ ion()
 class TALLY:
     def __init__(self, fname, path='.', altname='', ISTRA=0, nx=0, ny=0, ueproj=None):
         ''' Reads the data from tally, returns list with values '''
-        from numpy import zeros, transpose
+        from numpy import zeros, transpose,array
 
         self.fname = fname # Tally name
         self.altname = altname # Variable shorthand name
@@ -39,7 +39,7 @@ class TALLY:
                     else:
                         celldata = False
                 elif strata and celldata:
-                    valbuff.append([int(l.split()[0]),float(l.split()[1])])
+                    valbuff.append([int(l.split()[0]),[float(x) for x in l.split()[1:]]])
                 elif strata and (not celldata):
                     if l[:6] == 'NCELLS':
                         self.N = int(l.split()[-1]) # Number of cells
@@ -60,12 +60,12 @@ class TALLY:
                     elif l[:5] == 'TOTAL':
                         totline = True
                     elif totline:
-                        self.volsum = float(l.split()[0]) # Sum of product of cell value and volume
+                        self.volsum = array([float(x) for x in l.split()]) # Sum of product of cell value and volume
                         totline = False
                     elif l[:4] == 'MEAN':
                         meanline = True
                     elif meanline:
-                        self.mean = float(l.split()[0]) # Mean 
+                        self.mean = array([float(x) for x in l.split()]) # Mean
                         meanline = False
 
         # TODO: Figure out if index 1 is the GC or first real cell (i.e. Fotran or Python indexing.. Assume Fortran)
@@ -73,8 +73,8 @@ class TALLY:
         self.data = {}
         # Create EIRENE data array
         eirbuff = zeros((self.N, self.Ns))
-        for i in valbuff:
-            eirbuff[i[0]] = i[1:]
+        for i in valbuff[:len(valbuff)-2*intal]:
+            eirbuff[i[0]] = i[1]
 
         self.data['eir'] = eirbuff.transpose()
 
@@ -293,7 +293,7 @@ class EIRRUN:
     def __init__(self,path='.',ISTRA=0):
         from numpy import linspace,reshape,transpose,pad,zeros,sum
         from os.path import abspath
-        path=abspath(path)
+        self.path=abspath(path)
 
 
         self.nodes=NODES(path=path,npco=False)
@@ -425,28 +425,38 @@ class EIRRUN:
 
 
     def get(self, var, code='eir', processing='raw', s=None):
-        from numpy import zeros,sum,mean
+        from numpy import zeros,sum,mean, transpose
         
         try:
             ret = self.data[self.tallies()[var]] # Try to access the data by the aternative handle
         except:
             ret = self.data[var] # If not, assume the variable to the tally name
 
-        if (ret.Ns != 1) and (s is None):
-            print('Multi-species tally requested: please specify s!')
-            return
-        elif (ret.Ns !=1):
+        if processing == 'volsum': # EIRENE tally volumetric sum
+            return ret.volsum
+        elif processing == 'meansum': # EIRENE tally mean
+            return ret.mean
+        elif (ret.Ns !=1) and (s is not None): # Else, pick the right species
             ret = ret.data[code][s]
+        elif (ret.Ns != 1) and (s is None):
+            if code == 'ue':
+                ret = transpose(ret.data[code], (1,2,3,0))
+            elif code == 'eir':
+                ret = transpose(ret.data[code], (1,0))
         else:
             ret = ret.data[code][0]
             
+        # Check if UEDGE mean is requested
+        if (processing == 'mean') and (code == 'ue'):
+            ret = sum(ret, axis=2)
+        else:
+            return ret
+
         # TODO: get meansum - ret.mean
         # TODO: get volsum - ret.colsum
         # TODO: get mean - ret cell mean
         # TODO: get weighted - ret cellval*cellvol/totvol
 
-
-        return ret
 
 
     def getN(self,var,s=0):

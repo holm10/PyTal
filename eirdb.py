@@ -25,7 +25,7 @@ class SETUP():
     =========================================='''
 
 
-    def sort_ind(self,var,ind,s=0):
+    def sort_ind(self,var,ind, **kwargs):
         ''' Sorts list by value of var at index (ix,iy) 
         sort_mp(var,ix,iy,**keys)
 
@@ -41,7 +41,14 @@ class SETUP():
         Void
         '''
         # Check whether the requested parameter has a species index
-        self.cases.sort(key=lambda case: case.get(var)[ind])
+        if isinstance(ind,int): # EIRENE index
+            ind = ind # Use as is
+        elif len(ind) == 3: # UEDGE index with triangle specified
+            ind = self.cases[0].UEarr[ind[0], ind[1], ind[2]]
+        else:
+            print('Unspecified index!')
+            return
+        self.cases.sort(key=lambda case: case.get(var, **kwargs)[ind])
 
 
     def sort_rowmax(self,var,row,s=0,supress=False):
@@ -75,7 +82,7 @@ class SETUP():
     Get parameter
     =========================================='''
 
-    def get(self,var,s=0, **kwargs):
+    def get(self, var, **kwargs):
         ''' Returns a list of arrays containing var
         get(var,**keys)
 
@@ -86,7 +93,13 @@ class SETUP():
         s[=0]:      Species index to be used, defaults to 0
         '''
         from numpy import asarray
-        return asarray([case.get(var,s=s,**kwargs) for case in self.cases])
+
+        if 'processing' in kwargs:
+            if kwargs.get('processing') in []:
+                kwargs['processing'] = 'raw' # Set the processing type to be passed
+
+        return asarray([case.get(var, **kwargs) for case in self.cases])
+        # Implement checks for further operations
 
 
     def getZ(self,var):
@@ -595,7 +608,7 @@ class SETUP():
 
 
 
-def create_database(nx,ny,savename=None,sortind=(0,0),sortvar='ne',outpath='.',path='.',ret=True):
+def create_database(savename=None,sortind=(1,1,0),sortvar='ne',outpath='.',path='.',ret=True):
     ''' Creates a database
         Parameters:
             savename        If set, saves dict as pickle named 'savename'
@@ -645,7 +658,7 @@ def create_database(nx,ny,savename=None,sortind=(0,0),sortvar='ne',outpath='.',p
         print('******************************')
         print('*** Directory: '+child+' ***')
         print('******************************')
-        retl.append(EIRRUN(path+'/'+child,nx=nx,ny=ny))        
+        retl.append(EIRRUN(path+'/'+child))        
 
         chdir(parent)
     
