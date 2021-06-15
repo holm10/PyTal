@@ -412,6 +412,13 @@ class EIRRUN:
             ret[i]/=2
         return ret[1:]*1e-2
 
+    def getZarr(self):
+        from numpy import array
+        ret=[]
+        for i in range(self.nx):
+            ret.append(self.getZ(i))
+        return array(ret)
+
     def getZ(self,row):
         from numpy import zeros,mean
 
