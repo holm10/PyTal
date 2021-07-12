@@ -6,6 +6,48 @@
 from matplotlib.pyplot import ion
 ion()
 
+class EIROUT:
+    def __init__(self, fname, path='.'):
+
+        globlst = []
+        with open('{}/{}'.format(path,fname),'r') as f:
+            globbal = False
+            for l in f:
+                # Read global parameters
+                if l.strip() == '= GLOBAL BALANCES (AMP/WATT) =':
+                    globbal = True
+                elif globbal == True:
+                    # Reading global values
+                    globlst.append(l.strip())
+                    if l[:5] == '*****':
+                        break
+                elif l.split(',')[0].strip() == 'TOTAL VOLUME':
+                    self.VOL = float(l.split()[-1].strip())
+
+        start = False
+        self.POTMLI = {}
+        for l in range(len(globlst)): 
+            dl = globlst[l]
+            if dl.split('=')[0].strip() == 'WTOTM':
+                buff = globlst[l+1].split()
+                [species, value] = buff[:2]
+                self.WTOTM = {species.strip(): float(value.strip())}
+            if dl.split('=')[0].strip() == 'POTATI':
+                try:
+                    [species, value] = globlst[l+1].split()
+                    self.POTATI = {species.strip(): float(value.strip())}
+                except:
+                    self.POTATI = {'H': 0}
+            if dl.split('=')[0].strip() == 'POTMLI':
+                start = True
+            elif start is True and dl.split()[0].strip() != 'SUM':
+                buff = dl.split()
+                for entry in range(0, len(buff), 2):
+                    self.POTMLI[buff[entry]]=float(buff[entry+1])
+            elif start is True and dl.split()[0].strip() == 'SUM':
+                break
+
+
 
 class TALLY:
     def __init__(self, fname, path='.', altname='', ISTRA=0, nx=0, ny=0, ueproj=None):
@@ -289,7 +331,7 @@ class FORT30:
         for i in range(len(self.cells)):
             self.plot_cell(i,ax)
 
-class EIRRUN:
+class EIRRUN(EIROUT):
     def __init__(self,path='.',ISTRA=0):
         from numpy import linspace,reshape,transpose,pad,zeros,sum
         from os.path import abspath
@@ -324,6 +366,7 @@ class EIRRUN:
         # recreate the fortran indexing. The third index indicates whether
         # it is the first or second traingle in the sell
 
+        EIROUT.__init__(self,'eirene.out', self.path)
 
         self.data={}
         for var, tally in self.tallies().items():
