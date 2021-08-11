@@ -9,43 +9,158 @@ ion()
 class EIROUT:
     def __init__(self, fname, path='.'):
 
-        globlst = []
+        self.STRATA = dict()
         with open('{}/{}'.format(path,fname),'r') as f:
-            globbal = False
-            for l in f:
-                # Read global parameters
-                if l.strip() == '= GLOBAL BALANCES (AMP/WATT) =':
-                    globbal = True
-                elif globbal == True:
-                    # Reading global values
-                    globlst.append(l.strip())
-                    if l[:5] == '*****':
-                        break
-                elif l.split(',')[0].strip() == 'TOTAL VOLUME':
-                    self.VOL = float(l.split()[-1].strip())
+        # TODO:  rewrite this to do it all in a single loop, as in CRUMPET
+        # TODO: add capability of choosing IITER
+            sumoverstrata = False # Switch to identify sum over strata
+            parsingvar = False
+            surfflux = False
+            tally = 0
+            stratype = False
+            flx = sgn = ''
+            varlist = ['NHIST', 'INFLUX', 'PTRASH', 'ETOTA', 'EPATI', 'EAATI',
+                        'EMATI', 'EIATI', 'EOTATI', 'ERFATI', 'ETOTM', 'EPMLI',
+                        'EMMLI', 'EOTMLI', 'ERFMLI', 'ETOTI', 'EMIOI', 'EIIOI',
+                        'ERFIOI', 'ETRASH', 'PTOTE', 'PAELI', 'PMELI', 'PIELI', 
+                        'EAELI', 'EMELI', 'EIELI', 'PUMPTOT',
+                        ]
+            #paati = pmati = piati = potati =  prfaai = difa = difra = False
 
-        start = False
-        self.POTMLI = {}
-        for l in range(len(globlst)): 
-            dl = globlst[l]
-            if dl.split('=')[0].strip() == 'WTOTM':
-                buff = globlst[l+1].split()
-                [species, value] = buff[:2]
-                self.WTOTM = {species.strip(): float(value.strip())}
-            if dl.split('=')[0].strip() == 'POTATI':
-                try:
-                    [species, value] = globlst[l+1].split()
-                    self.POTATI = {species.strip(): float(value.strip())}
-                except:
-                    self.POTATI = {'H': 0}
-            if dl.split('=')[0].strip() == 'POTMLI':
-                start = True
-            elif start is True and dl.split()[0].strip() != 'SUM':
-                buff = dl.split()
-                for entry in range(0, len(buff), 2):
-                    self.POTMLI[buff[entry]]=float(buff[entry+1])
-            elif start is True and dl.split()[0].strip() == 'SUM':
-                break
+            # Loop through the file line-by-line
+            for l in f:        
+                if l.strip() == '*  THIS IS THE SUM OVER THE STRATA  *':
+                    sumoverstrata = True
+                elif sumoverstrata is True: # Read data from sum of strata
+                    # If we are hitting the species sum, we have parsed the var
+                    if 'SUM OVER SPECIES' in l:
+                        parsingvar = False
+                    # All variables in varlist have the same shape: store them
+                    # in an automated fashion
+                    elif l.split('=')[0].strip() in varlist:
+                        setattr(self, l.split('=')[0].strip(),
+                                    float(l.split('=')[1].strip())) 
+                    # Parse species-resolved data
+                    elif parsingvar is not False:
+                        # Use built-in function to populate dictionary
+                        self.parsespecies(getattr(self, parsingvar), l)
+                    # NOTE: Risk of exceptions making it here
+                    # All lines containing '=' and not belonging to any of 
+                    # the above categories are assumed to be species-resoolved
+                    elif '=' in l and l.count('=') == 1 and 'TOTAL=' not in l:
+                        setattr(self, l.split('=')[0].strip(), dict())
+                        parsingvar = l.split('=')[0].strip()
+                    # The sum over strata is terminated at this line.
+                    # Set switch to read fluxes for each surface
+                    elif 'FLUXES AT SURFACES' in l:
+                        sumoverstrata = False
+                        surfflux = True
+                # Reading surface fluxes now
+                elif surfflux is True:
+                    # Register beginning and end of name block
+                    if '***' in l:
+                        tally += 1
+                    # Identify name-line of the block
+                    if tally == 1 and len(l.replace('*','').strip())>0:
+                        # Store the name with individual dict
+                        curstra = l.replace('*','').strip()
+                        self.STRATA[curstra] = dict()
+                    # Data is being read after name-block
+                    if tally == 2:
+                        # Store stratum data
+                        if stratype is not False:
+                            # End of current stratum
+                            if '***' in l:
+                                stratype = False 
+                            # End of species-resolved results
+                            elif 'TOTAL' in l:
+                                # Don't parse further vars
+                                parsingvar = False
+                            # Entering new species-resolved block
+                            elif 'PARTIAL' in l:
+                                # Parse values
+                                parsingvar = True
+                            # Ignoring ublabeled negative fluxes
+                            elif 'FLX' in l:
+                                pass
+                            # Reading transparent data
+                            elif stratype == 'transparent':
+                                if 'FLUX' in l:
+                                    flx = 'P'*('P-' in l) + 'E'*('E-' in l)
+                                elif len(l.split())>1 and parsingvar is True:
+                                    val = float(l.split()[1].strip())
+                                    sgn = '-'*(val < 0) + '+'*(val>0)
+                                    self.parsespecies(self.STRATA[curstra][flx+sgn], l)
+                                    
+                            elif stratype == 'absorbing':
+                                if 'NO FLUXES' in l or '(RECYCLING' in l:
+                                    pass
+                                elif 'FLUX ' in l:
+                                    by = '_ATOMS'*('ATOMS' in l)+'_MOLECULES'*('MOLECULES' in l
+                                        ) +'_BULK_IONS'*('BULK' in l)+'_TEST_IONS'*('TEST' in l
+                                        ) +'_PHOTONS'*('PHOTONS' in l)
+                                    parsingvar = True
+                                elif parsingvar is True:
+                                    if 'FLUX' in l:
+                                        flx = 'E'*('E' in l) + 'P'*('P' in l)
+                                    elif 'RE-EMITTED' in l or 'INCIDENT' in l:
+                                        tpe = 'RE'*('RE' in l) + 'IN'*('IN' in l)
+                                    else:
+                                        self.parsespecies(self.STRATA[curstra][flx+'-'+tpe], l, by)
+                        # Identify transparent stratum
+                        elif 'PARTIAL' in l:
+                            stratype = 'transparent'
+                            self.STRATA[curstra] = {'E+' : {}, 'E-' : {}, 
+                                                    'P+' : {}, 'P-' :{}, }
+                            parsingvar = True
+                        # Identify absorbing stratum
+                        elif 'FLUX ' in l:
+                            stratype = 'absorbing'
+                            self.STRATA[curstra] = {'E-IN' : {}, 'P-IN': {}, 
+                                                    'E-RE' : {}, 'P-RE': {}}
+                            # Identify species responsible for re-emission
+                            by = '_ATOMS'*('ATOMS' in l)+'_MOLECULES'*(
+                                'MOLECULES' in l) +'_BULK_IONS'*('BULK' in l
+                                )+'_TEST_IONS'*('TEST' in l) +'_PHOTONS'*(
+                                'PHOTONS' in l)
+                            parsingvar = True
+                        # Store stratum surface area
+                        elif 'SURFACE AREA' in l:
+                            self.STRATA[curstra]['A'] = float(l.split()[-1])
+                    # Switching to new strata
+                    if tally == 3:
+                        tally = 1
+                    # End of surface fluxes
+                    if 'WRITE 11' in l:
+                        surfflux = False
+        
+    def E_throughflux(self, istra, species):
+        return self.throughflux(istra, species, 'E')
+
+    def P_throughflux(self, istra, species):
+        return self.throughflux(istra, species, 'P')
+            
+    def throughflux(self, istra, species, var):
+        from numpy import array
+        strata = self.STRATA[list(self.STRATA)[istra]]
+          try:
+            if species not in strata[var+'+'].keys():
+                pos = 0
+            else:
+                pos = strata[var+'+'][species]
+            if species not in strata[var+'-'].keys():
+                neg = 0
+            else:
+                neg = strata[var+'-'][species]
+            return array([pos, neg])
+        except:
+            return None, None
+
+    def parsespecies(self, target, line, app=''):
+        parts = line.split()
+        for i in range(0, len(parts), 2):
+            target[parts[i]+app] = float(parts[i+1])
+            
 
 
 

@@ -101,6 +101,13 @@ class SETUP():
         return asarray([case.get(var, **kwargs) for case in self.cases])
         # Implement checks for further operations
 
+    def get_P_throughflux(self, istra, species):
+        from numpy import asarray
+        return asarray([case.P_throughflux(istra, species) for case in self.cases])
+
+    def get_E_throughflux(self, istra, species):
+        from numpy import asarray
+        return asarray([case.E_throughflux(istra, species) for case in self.cases])
 
     def getZ(self,var):
         from numpy import asarray
