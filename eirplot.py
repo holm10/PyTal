@@ -15,6 +15,7 @@ class EIROUT:
         # TODO: add capability of choosing IITER
             sumoverstrata = False # Switch to identify sum over strata
             parsingvar = False
+            omit = False
             surfflux = False
             tally = 0
             stratype = False
@@ -47,9 +48,11 @@ class EIROUT:
                     # NOTE: Risk of exceptions making it here
                     # All lines containing '=' and not belonging to any of 
                     # the above categories are assumed to be species-resoolved
-                    elif '=' in l and l.count('=') == 1 and 'TOTAL=' not in l:
+                    elif '=' in l and l.count('=') == 1 and 'TOTAL=' not in l and omit is not True:
                         setattr(self, l.split('=')[0].strip(), dict())
                         parsingvar = l.split('=')[0].strip()
+                    elif 'AT WHICH TEST PARTICLES FLUXES' in l:
+                        omit = True
                     # The sum over strata is terminated at this line.
                     # Set switch to read fluxes for each surface
                     elif 'FLUXES AT SURFACES' in l:
@@ -89,9 +92,8 @@ class EIROUT:
                                     flx = 'P'*('P-' in l) + 'E'*('E-' in l)
                                 elif len(l.split())>1 and parsingvar is True:
                                     val = float(l.split()[1].strip())
-                                    sgn = '-'*(val < 0) + '+'*(val>0)
+                                    sgn = '-'*(val < 0) + '+'*(val>=0)
                                     self.parsespecies(self.STRATA[curstra][flx+sgn], l)
-                                    
                             elif stratype == 'absorbing':
                                 if 'NO FLUXES' in l or '(RECYCLING' in l:
                                     pass
@@ -143,7 +145,7 @@ class EIROUT:
     def throughflux(self, istra, species, var):
         from numpy import array
         strata = self.STRATA[list(self.STRATA)[istra]]
-          try:
+        try:
             if species not in strata[var+'+'].keys():
                 pos = 0
             else:
@@ -222,7 +224,10 @@ class TALLY:
                     elif l[:4] == 'MEAN':
                         meanline = True
                     elif meanline:
-                        self.mean = array([float(x) for x in l.split()]) # Mean
+                        try:
+                            self.mean = array([float(x) for x in l.split()]) # Mean
+                        except:
+                            self.mean = 0
                         meanline = False
 
         # TODO: Figure out if index 1 is the GC or first real cell (i.e. Fotran or Python indexing.. Assume Fortran)
@@ -294,7 +299,13 @@ class NODES:
                 self.nodes.append([nodex[i],nodey[i]])
         
 
-
+    def plot_nodes(self):
+        from matplotlib.pyplot import figure
+        fig=figure()
+        ax=fig.add_subplot(111)
+    
+        for n in self.nodes:
+            ax.plot(n[0],n[1],'k.')
 
     def get(self,N):
         ''' Get the coordinates of the Nth fortran index node '''
@@ -447,7 +458,7 @@ class FORT30:
             self.plot_cell(i,ax)
 
 class EIRRUN(EIROUT):
-    def __init__(self,path='.',ISTRA=0):
+    def __init__(self,path='.',ISTRA=0, read_eirout=True):
         from numpy import linspace,reshape,transpose,pad,zeros,sum
         from os.path import abspath
         self.path=abspath(path)
@@ -481,7 +492,8 @@ class EIRRUN(EIROUT):
         # recreate the fortran indexing. The third index indicates whether
         # it is the first or second traingle in the sell
 
-        EIROUT.__init__(self,'eirene.out', self.path)
+        if read_eirout is True:
+            EIROUT.__init__(self,'eirene.out', self.path)
 
         self.data={}
         for var, tally in self.tallies().items():
@@ -591,7 +603,6 @@ class EIRRUN(EIROUT):
 
     def get(self, var, code='eir', processing='raw', s=None):
         from numpy import zeros,sum,mean, transpose
-        
         try:
             ret = self.data[self.tallies()[var]] # Try to access the data by the aternative handle
         except:
@@ -613,9 +624,8 @@ class EIRRUN(EIROUT):
             
         # Check if UEDGE mean is requested
         if (processing == 'mean') and (code == 'ue'):
-            ret = sum(ret, axis=2)
-        else:
-            return ret
+            ret = 0.5*sum(ret, axis=2)
+        return ret
 
         # TODO: get meansum - ret.mean
         # TODO: get volsum - ret.colsum

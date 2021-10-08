@@ -615,7 +615,9 @@ class SETUP():
 
 
 
-def create_database(savename=None,sortind=(1,1,0),sortvar='ne',outpath='.',path='.',ret=True):
+def create_database(savename=None,sortind=(1,1,0),sortvar='ne',
+                    outpath='.',path='.',ret=True, read_eirout=True,
+                    ISTRA=0):
     ''' Creates a database
         Parameters:
             savename        If set, saves dict as pickle named 'savename'
@@ -665,7 +667,7 @@ def create_database(savename=None,sortind=(1,1,0),sortvar='ne',outpath='.',path=
         print('******************************')
         print('*** Directory: '+child+' ***')
         print('******************************')
-        retl.append(EIRRUN(path+'/'+child))        
+        retl.append(EIRRUN(path+'/'+child, read_eirout=read_eirout, ISTRA=ISTRA))
 
         chdir(parent)
     

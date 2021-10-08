@@ -60,6 +60,7 @@ class SONNET():
                     ly.append(self.y[ix,iy,i])
                 ax.plot(lx,ly,'k-',linewidth=0.5)
 
+        f.show()
 
 
 
